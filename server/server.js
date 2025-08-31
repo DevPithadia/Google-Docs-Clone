@@ -8,13 +8,13 @@ const { Server } = require("socket.io");
 // mongoose.connect('mongodb://localhost/google-docs-clone')
 
 async function connectDB() {
-    try {
-        await mongoose.connect('mongodb://localhost/google-docs-clone');
-        console.log('MongoDB connected successfully');
-    } catch (err) {
-        console.error('MongoDB connection error:', err);
-        process.exit(1); // Exit process if connection fails
-    }
+  try {
+    await mongoose.connect('mongodb://localhost/google-docs-clone');
+    console.log('MongoDB connected successfully');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    process.exit(1); // Exit process if connection fails
+  }
 }
 
 connectDB();
@@ -42,17 +42,33 @@ app.post("/documents", async (req, res) => {
   }
 });
 
-// Edit document title
-app.patch("/documents/:id", async (req, res) => {
+// show document title
+app.get("/documents/:id", async (req, res) => {
   try {
-    const doc = await Document.findByIdAndUpdate(
+    const document = await Document.findById(req.params.id);
+    if (!document) return res.status(404).json({ error: "Document not found" });
+    res.json({ title: document.title, content: document.data }); // 'data' for Quill content
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+//edit document title
+app.put("/documents/:id/title", async (req, res) => {
+  try {
+    const { title } = req.body;
+    if (!title) return res.status(400).json({ error: "Title is required" });
+
+    const document = await Document.findByIdAndUpdate(
       req.params.id,
-      { title: req.body.title },
+      { title },
       { new: true }
     );
-    res.json(doc);
+    if (!document) return res.status(404).json({ error: "Document not found" });
+
+    res.json({ title: document.title });
   } catch (err) {
-    res.status(500).json({ error: "Failed to update title" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -84,26 +100,26 @@ const io = new Server(server, {
 const defaultValue = ""
 
 io.on("connection", socket => {
-    socket.on('get-document', async documentId => {
-        const document = await findOrCreateDocument(documentId)
-        socket.join(documentId)
-        socket.emit('load-document', document.data)
+  socket.on('get-document', async documentId => {
+    const document = await findOrCreateDocument(documentId)
+    socket.join(documentId)
+    socket.emit('load-document', document.data)
 
-        socket.on('send-changes', delta => {
-            socket.broadcast.to(documentId).emit('receive-changes', delta)
-        })
-
-        socket.on('save-document', async data => {
-            await Document.findByIdAndUpdate(documentId, { data })
-        })
+    socket.on('send-changes', delta => {
+      socket.broadcast.to(documentId).emit('receive-changes', delta)
     })
+
+    socket.on('save-document', async data => {
+      await Document.findByIdAndUpdate(documentId, { data })
+    })
+  })
 })
 
 async function findOrCreateDocument(id) {
-    if (id == null) return
-    const document = await Document.findById(id)
-    if (document) return document
-    return await Document.create({ _id: id, data: defaultValue })
+  if (id == null) return
+  const document = await Document.findById(id)
+  if (document) return document
+  return await Document.create({ _id: id, data: defaultValue })
 }
 
 // --- Start Server ---

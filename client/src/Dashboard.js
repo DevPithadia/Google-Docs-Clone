@@ -15,12 +15,14 @@ export default function Dashboard() {
   }, []);
 
   function handleNewDocument() {
-    const title = prompt("Enter document title:") || "Untitled Document";
+    const title = prompt("Enter document title:", "Untitled Document");
+    if (title === null) return;
+
     const newId = uuidV4();
     fetch("http://localhost:3001/documents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: newId, title }),
+      body: JSON.stringify({ id: newId, title: title || "Untitled Document" }),
     }).then(() => navigate(`/documents/${newId}`));
   }
 
@@ -33,11 +35,11 @@ export default function Dashboard() {
       fetch(`http://localhost:3001/documents/${id}`, {
         method: "DELETE",
       })
-      .then(res => res.json())
-      .then(() => {
-        setDocuments(prev => prev.filter(doc => doc._id !== id));
-      })
-      .catch(() => alert("Failed to delete document"));
+        .then(res => res.json())
+        .then(() => {
+          setDocuments(prev => prev.filter(doc => doc._id !== id));
+        })
+        .catch(() => alert("Failed to delete document"));
     }
   }
 
@@ -51,7 +53,7 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <h2>My Documents</h2>
         <button className="new-document-btn" onClick={handleNewDocument}>
-          + New Document
+          Create New
         </button>
       </div>
       <div className="documents-grid">

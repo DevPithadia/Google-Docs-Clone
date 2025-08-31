@@ -18,10 +18,40 @@ const TOOLBAR_OPTIONS = [
 ]
 
 export default function TextEditor() {
-
     const { id: documentId } = useParams()
     const [socket, setSocket] = useState()
     const [quill, setQuill] = useState()
+    const [title, setTitle] = useState("Untitled Document")
+    const [isTitleEditing, setIsTitleEditing] = useState(false)
+    const titleRef = useRef(null)
+
+    // Fetch title on mount
+    useEffect(() => {
+        // You may need to update this URL to match your backend route
+        fetch(`http://localhost:3001/documents/${documentId}`)
+            .then(res => res.json())
+            .then(doc => {
+                setTitle(doc.title || "Untitled Document")
+            })
+            .catch(() => setTitle("Untitled Document"))
+    }, [documentId])
+
+    // Save title to backend
+    const saveTitle = (newTitle) => {
+        setTitle(newTitle)
+        fetch(`http://localhost:3001/documents/${documentId}/title`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle }),
+        })
+    }
+
+    // Focus the input when editing starts
+    useEffect(() => {
+        if (isTitleEditing && titleRef.current) {
+            titleRef.current.focus()
+        }
+    }, [isTitleEditing])
 
     useEffect(() => {
         if (socket == null || quill == null) return
@@ -91,6 +121,50 @@ export default function TextEditor() {
     }, [])
 
     return (
-        <div className='container' ref={wrapperRef}></div>
+        <div className='container'>
+            <div className='document-title-wrapper' style={{ marginBottom: "1rem" }}>
+                {isTitleEditing ? (
+                    <input
+                        ref={titleRef}
+                        className='document-title-input'
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}    
+                        onBlur={() => { setIsTitleEditing(false); saveTitle(title); }}
+                        onKeyDown={e => {
+                            if (e.key === "Enter") {
+                                setIsTitleEditing(false);
+                                saveTitle(title);
+                            }
+                        }}
+                        style={{
+                            fontSize: "1.5rem",
+                            fontWeight: "bold",
+                            width: "100%",
+                            maxWidth: "600px",
+                            border: "none",
+                            background: "transparent",
+                            outline: "none"
+                        }}
+                    />
+                ) : (
+                    <h2
+                        className='document-title'
+                        style={{
+                            fontSize: "1.5rem",
+                            fontWeight: "bold",
+                            cursor: "pointer",
+                            width: "100%",
+                            maxWidth: "600px",
+                            margin: 0
+                        }}
+                        onClick={() => setIsTitleEditing(true)}
+                        title="Click to edit title"
+                    >
+                        {title}
+                    </h2>
+                )}
+            </div>
+            <div ref={wrapperRef}></div>
+        </div>
     )
 }
