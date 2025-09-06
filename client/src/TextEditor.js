@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Quill from 'quill'
 import "quill/dist/quill.snow.css"
 import { io } from 'socket.io-client'
-import { useParams } from 'react-router'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
 const SAVE_INTERVAL_MS = 1000
 const TOOLBAR_OPTIONS = [
@@ -24,6 +24,7 @@ export default function TextEditor() {
     const [title, setTitle] = useState("Untitled Document")
     const [isTitleEditing, setIsTitleEditing] = useState(false)
     const titleRef = useRef(null)
+    const navigate = useNavigate();
 
     // Fetch title on mount
     useEffect(() => {
@@ -120,15 +121,29 @@ export default function TextEditor() {
         setQuill(q);
     }, [])
 
+    function openDashboard() {
+        navigate("/")
+    }
+
     return (
         <div className='container'>
-            <div className='document-title-wrapper' style={{ marginBottom: "1rem" }}>
+            <div className='document-title-wrapper' style={{ display: 'flex', position: "sticky", boxSizing: "border-box", height: "55px", top: "0", zIndex: "1", backgroundColor: "#F3F3F3"}}>
+                <div className='dashboard-button' style={{
+                    margin: "10px", padding: "0.5rem 1.2rem",
+                    background: "#4285f4",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    fontSize: "1rem",
+                    cursor: "pointer",
+                    fontamily: "inherit"
+                }} onClick={() => openDashboard()}>Dashboard</div>
                 {isTitleEditing ? (
                     <input
                         ref={titleRef}
                         className='document-title-input'
                         value={title}
-                        onChange={e => setTitle(e.target.value)}    
+                        onChange={e => setTitle(e.target.value)}
                         onBlur={() => { setIsTitleEditing(false); saveTitle(title); }}
                         onKeyDown={e => {
                             if (e.key === "Enter") {
@@ -143,7 +158,9 @@ export default function TextEditor() {
                             maxWidth: "600px",
                             border: "none",
                             background: "transparent",
-                            outline: "none"
+                            outline: "none",
+                            margin: "10px",
+                            padding: "5px"
                         }}
                     />
                 ) : (
@@ -155,7 +172,8 @@ export default function TextEditor() {
                             cursor: "pointer",
                             width: "100%",
                             maxWidth: "600px",
-                            margin: 0
+                            margin: "10px",
+                            padding: "5px"
                         }}
                         onClick={() => setIsTitleEditing(true)}
                         title="Click to edit title"
