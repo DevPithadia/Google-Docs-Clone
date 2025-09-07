@@ -11,6 +11,10 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    document.title = "Google Docs Clone"
+  }, []);
+
+  useEffect(() => {
     fetch("http://localhost:3001/documents")
       .then((res) => res.json())
       .then((data) => setDocuments(data))

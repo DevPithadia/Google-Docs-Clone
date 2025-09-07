@@ -5,9 +5,11 @@ import { io } from 'socket.io-client'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
 const SAVE_INTERVAL_MS = 1000
+const FONT_SIZES = ['8px', '10px', '12px', '14px', '18px', '24px', '36px'];
 const TOOLBAR_OPTIONS = [
     [{ header: [1, 2, 3, 4, 5, 6, false] }],
     [{ font: [] }],
+    [{ size: FONT_SIZES }],
     [{ list: "ordered" }, { list: "bullet" }],
     ["bold", "italic", "underline"],
     [{ color: [] }, { background: [] }],
@@ -17,6 +19,11 @@ const TOOLBAR_OPTIONS = [
     ["clean"],
 ]
 
+// Register size whitelist
+const Size = Quill.import('attributors/style/size');
+Size.whitelist = FONT_SIZES;
+Quill.register(Size, true);
+
 export default function TextEditor() {
     const { id: documentId } = useParams()
     const [socket, setSocket] = useState()
@@ -25,6 +32,10 @@ export default function TextEditor() {
     const [isTitleEditing, setIsTitleEditing] = useState(false)
     const titleRef = useRef(null)
     const navigate = useNavigate();
+
+    useEffect(() => {
+        document.title = title ? `${title} - Google Docs Clone` : "Google Docs Clone"
+    })
 
     // Fetch title on mount
     useEffect(() => {
