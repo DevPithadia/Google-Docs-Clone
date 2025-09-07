@@ -127,7 +127,14 @@ export default function TextEditor() {
 
     return (
         <div className='container'>
-            <div className='document-title-wrapper' style={{ display: 'flex', position: "sticky", boxSizing: "border-box", height: "55px", top: "0", zIndex: "1", backgroundColor: "#F3F3F3"}}>
+            <div className='document-title-wrapper' style={{
+                display: 'flex',
+                position: "sticky",
+                height: "55px",
+                top: "0",
+                zIndex: "1",
+                backgroundColor: "#F3F3F3"
+            }}>
                 <div className='dashboard-button' style={{
                     margin: "10px", padding: "0.5rem 1.2rem",
                     background: "#4285f4",
