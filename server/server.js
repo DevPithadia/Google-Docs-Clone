@@ -1,6 +1,6 @@
 const mongoose = require("mongoose")
 const express = require('express');
-const Document = require('./Document')
+const Document = require('./models/Document')
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
