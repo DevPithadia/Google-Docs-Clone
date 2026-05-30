@@ -76,3 +76,6 @@ server/data/db/   # local MongoDB data if used
 # Graphify generated files
 graphify-out/
 .agents/
+
+# Sensitive information file
+sensitive_info
