@@ -72,3 +72,7 @@ client/public/*.tmp
 server/dist/
 server/logs/
 server/data/db/   # local MongoDB data if used
+
+# Graphify generated files
+graphify-out/
+.agents/
