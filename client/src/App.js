@@ -1,22 +1,34 @@
-import TextEditor from "./TextEditor";
+import React from "react";
 import {
   BrowserRouter as Router,
   Routes,
-  Route,
-  Navigate
-} from 'react-router-dom'
-import { v4 as uuidV4 } from 'uuid'
+  Route
+} from "react-router-dom";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Login from "./components/Login";
 import Dashboard from "./Dashboard";
+import TextEditor from "./TextEditor";
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* <Route path="/" exact element={<Navigate to={`/documents/${uuidV4()}`} />} /> */}
-        <Route path="/" element={<Dashboard/>} />
-        <Route path="/documents/:id" element={<TextEditor />} />
-      </Routes>
-    </Router>
+    <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            {/* Public Route */}
+            <Route path="/login" element={<Login />} />
+
+            {/* Protected Routes */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/documents/:id" element={<TextEditor />} />
+            </Route>
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }
 

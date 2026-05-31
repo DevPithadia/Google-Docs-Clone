@@ -1,9 +1,13 @@
+require("dotenv").config();
 const mongoose = require("mongoose")
 const express = require('express');
 const Document = require('./models/Document')
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
+const { requireAuth } = require("./middleware/auth");
+const authRoutes = require("./routes/auth");
 
 // mongoose.connect('mongodb://localhost/google-docs-clone')
 
@@ -23,48 +27,64 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Get all documents
-app.get("/documents", async (req, res) => {
+// Register Auth Routes
+app.use("/auth", authRoutes);
+
+// Get all documents (owned by the user)
+app.get("/documents", requireAuth, async (req, res) => {
   try {
-    const docs = await Document.find({});
+    const docs = await Document.find({ owner: req.user.userId });
     res.json(docs);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch documents" });
   }
 });
 
-app.post("/documents", async (req, res) => {
+app.post("/documents", requireAuth, async (req, res) => {
   try {
-    const doc = await Document.create({ _id: req.body.id, data: req.body.data || {}, title: req.body.title || "Untitled Document" });
+    const doc = await Document.create({
+      _id: req.body.id,
+      data: req.body.data || {},
+      title: req.body.title || "Untitled Document",
+      owner: req.user.userId
+    });
     res.json(doc);
   } catch (err) {
     res.status(500).json({ error: "Failed to create document" });
   }
 });
 
-// show document title
-app.get("/documents/:id", async (req, res) => {
+// show document title (only if owned)
+app.get("/documents/:id", requireAuth, async (req, res) => {
   try {
     const document = await Document.findById(req.params.id);
     if (!document) return res.status(404).json({ error: "Document not found" });
+
+    if (document.owner.toString() !== req.user.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     res.json({ title: document.title, content: document.data }); // 'data' for Quill content
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
 });
 
-//edit document title
-app.put("/documents/:id/title", async (req, res) => {
+//edit document title (only if owned)
+app.put("/documents/:id/title", requireAuth, async (req, res) => {
   try {
     const { title } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
 
-    const document = await Document.findByIdAndUpdate(
-      req.params.id,
-      { title },
-      { new: true }
-    );
+    const document = await Document.findById(req.params.id);
     if (!document) return res.status(404).json({ error: "Document not found" });
+
+    if (document.owner.toString() !== req.user.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    document.title = title;
+    await document.save();
 
     res.json({ title: document.title });
   } catch (err) {
@@ -72,9 +92,16 @@ app.put("/documents/:id/title", async (req, res) => {
   }
 });
 
-// Delete a document
-app.delete("/documents/:id", async (req, res) => {
+// Delete a document (only if owned)
+app.delete("/documents/:id", requireAuth, async (req, res) => {
   try {
+    const document = await Document.findById(req.params.id);
+    if (!document) return res.status(404).json({ error: "Document not found" });
+
+    if (document.owner.toString() !== req.user.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     await Document.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) {
@@ -97,11 +124,34 @@ const io = new Server(server, {
   },
 });
 
+// Socket.io JWT Authentication Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+    return next(new Error("Authentication error: Token missing"));
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.user = decoded; // Attach authenticated user to socket.user
+    next();
+  } catch (err) {
+    next(new Error("Authentication error: Invalid token"));
+  }
+});
+
 const defaultValue = ""
 
 io.on("connection", socket => {
   socket.on('get-document', async documentId => {
-    const document = await findOrCreateDocument(documentId)
+    const document = await Document.findById(documentId);
+
+    // Verify ownership before joining room
+    if (!document || document.owner.toString() !== socket.user.userId) {
+      return socket.emit('error', 'Access denied: You do not own this document');
+    }
+
     socket.join(documentId)
     socket.emit('load-document', document.data)
 
@@ -110,17 +160,14 @@ io.on("connection", socket => {
     })
 
     socket.on('save-document', async data => {
-      await Document.findByIdAndUpdate(documentId, { data })
+      // Also check ownership on save
+      const doc = await Document.findById(documentId);
+      if (doc && doc.owner.toString() === socket.user.userId) {
+        await Document.findByIdAndUpdate(documentId, { data })
+      }
     })
   })
 })
-
-async function findOrCreateDocument(id) {
-  if (id == null) return
-  const document = await Document.findById(id)
-  if (document) return document
-  return await Document.create({ _id: id, data: defaultValue })
-}
 
 // --- Start Server ---
 const PORT = 3001;
