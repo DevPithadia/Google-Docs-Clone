@@ -1,0 +1,51 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #f0f2f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.login-card {
+  background: white;
+  padding: 2.5rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+}
+
+.app-title {
+  color: #1a73e8;
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+
+.app-subtitle {
+  color: #5f6368;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.google-btn-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  min-height: 40px;
+}
+
+.error-message {
+  background-color: #fdecea;
+  color: #d93025;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.loading-spinner {
+  color: #1a73e8;
+  font-weight: 500;
+}

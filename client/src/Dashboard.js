@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidV4 } from "uuid";
+import { useAuth } from "./context/AuthContext";
 import "./Dashboard.css";
 
 export default function Dashboard() {
@@ -9,17 +10,30 @@ export default function Dashboard() {
   const [filteredDocs, setFilteredDocs] = useState([]);
   const searchTimeout = useRef(null);
   const navigate = useNavigate();
+  const { user, token, logout } = useAuth();
 
   useEffect(() => {
-    document.title = "Google Docs Clone"
+    document.title = "Google Docs Clone";
   }, []);
 
   useEffect(() => {
-    fetch("http://localhost:3001/documents")
+    if (!token) return;
+
+    fetch(`${process.env.REACT_APP_API_URL}/documents`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
       .then((res) => res.json())
-      .then((data) => setDocuments(data))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setDocuments(data);
+        } else {
+          setDocuments([]);
+        }
+      })
       .catch(() => setDocuments([]));
-  }, []);
+  }, [token]);
 
   // Debounced search effect
   useEffect(() => {
@@ -52,9 +66,12 @@ export default function Dashboard() {
     if (title === null) return;
 
     const newId = uuidV4();
-    fetch("http://localhost:3001/documents", {
+    fetch(`${process.env.REACT_APP_API_URL}/documents`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ id: newId, title: title || "Untitled Document" }),
     }).then(() => navigate(`/documents/${newId}`));
   }
@@ -65,29 +82,53 @@ export default function Dashboard() {
 
   function handleDeleteDocument(id) {
     if (window.confirm("Are you sure you want to delete this document?")) {
-      fetch(`http://localhost:3001/documents/${id}`, {
+      fetch(`${process.env.REACT_APP_API_URL}/documents/${id}`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       })
-        .then(res => res.json())
+        .then((res) => res.json())
         .then(() => {
-          setDocuments(prev => prev.filter(doc => doc._id !== id));
+          setDocuments((prev) => prev.filter((doc) => doc._id !== id));
         })
         .catch(() => alert("Failed to delete document"));
     }
   }
 
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   function getPreview(data) {
     if (!data || !data.ops) return "";
-    return data.ops.map(op => typeof op.insert === "string" ? op.insert : "").join("").slice(0, 40);
+    return data.ops
+      .map((op) => (typeof op.insert === "string" ? op.insert : ""))
+      .join("")
+      .slice(0, 40);
   }
 
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">
-        <div style={{fontSize: "22px"}}>My Documents</div>
-        <button className="new-document-btn" onClick={handleNewDocument}>
-          New Document
-        </button>
+        <div className="header-left">
+          <div style={{ fontSize: "22px" }}>My Documents</div>
+        </div>
+        <div className="header-right">
+          <div className="user-profile">
+            {user?.picture && (
+              <img src={user.picture} alt={user.name} className="user-avatar" />
+            )}
+            <span className="user-name">{user?.name}</span>
+            <button className="logout-btn" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+          <button className="new-document-btn" onClick={handleNewDocument}>
+            New Document
+          </button>
+        </div>
       </div>
       <div className="searchbar-center-container">
         <input
@@ -109,11 +150,14 @@ export default function Dashboard() {
               <div className="document-title">
                 {doc.title || "Untitled Document"}
               </div>
-              <div className="document-card" onClick={() => handleOpenDocument(doc._id)}>
+              <div
+                className="document-card"
+                onClick={() => handleOpenDocument(doc._id)}
+              >
                 <div className="document-preview">{getPreview(doc.data)}</div>
                 <button
                   className="delete-document-btn"
-                  onClick={e => {
+                  onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteDocument(doc._id);
                   }}

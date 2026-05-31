@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Quill from 'quill'
 import "quill/dist/quill.snow.css"
 import { io } from 'socket.io-client'
-import { Navigate, useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from './context/AuthContext'
 
 const SAVE_INTERVAL_MS = 1000
 const FONT_SIZES = ['8px', '10px', '12px', '14px', '18px', '24px', '36px'];
@@ -32,29 +33,60 @@ export default function TextEditor() {
     const [isTitleEditing, setIsTitleEditing] = useState(false)
     const titleRef = useRef(null)
     const navigate = useNavigate();
+    const { token, logout } = useAuth();
 
     useEffect(() => {
         document.title = title ? `${title} - Google Docs Clone` : "Google Docs Clone"
-    })
+    }, [title])
 
     // Fetch title on mount
     useEffect(() => {
-        // You may need to update this URL to match your backend route
-        fetch(`http://localhost:3001/documents/${documentId}`)
-            .then(res => res.json())
+        if (!token) return;
+
+        fetch(`${process.env.REACT_APP_API_URL}/documents/${documentId}`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        })
+            .then(res => {
+                if (res.status === 401) {
+                    logout();
+                    navigate("/login");
+                    throw new Error("Unauthorized");
+                }
+                if (res.status === 403) {
+                    navigate("/");
+                    throw new Error("Forbidden");
+                }
+                return res.json();
+            })
             .then(doc => {
                 setTitle(doc.title || "Untitled Document")
             })
-            .catch(() => setTitle("Untitled Document"))
-    }, [documentId])
+            .catch(err => {
+                console.error("Failed to fetch title:", err);
+                if (err.message !== "Unauthorized" && err.message !== "Forbidden") {
+                    setTitle("Untitled Document");
+                }
+            })
+    }, [documentId, token, logout, navigate])
 
     // Save title to backend
     const saveTitle = (newTitle) => {
+        if (!token) return;
         setTitle(newTitle)
-        fetch(`http://localhost:3001/documents/${documentId}/title`, {
+        fetch(`${process.env.REACT_APP_API_URL}/documents/${documentId}/title`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
             body: JSON.stringify({ title: newTitle }),
+        }).then(res => {
+            if (res.status === 401) {
+                logout();
+                navigate("/login");
+            }
         })
     }
 
@@ -72,16 +104,37 @@ export default function TextEditor() {
             quill.enable()
         })
         socket.emit('get-document', documentId)
-    }, [socket, quill, documentId])
+        
+        socket.on('error', (errorMessage) => {
+            console.error("Socket error:", errorMessage);
+            if (errorMessage.includes("Authentication error")) {
+                logout();
+                navigate("/login");
+            } else if (errorMessage.includes("Access denied")) {
+                navigate("/");
+            }
+        })
+
+        return () => {
+            socket.off('load-document')
+            socket.off('error')
+        }
+    }, [socket, quill, documentId, logout, navigate])
 
     useEffect(() => {
-        const s = io("http://localhost:3001")
+        if (!token) return;
+
+        const s = io(process.env.REACT_APP_SOCKET_URL || "http://localhost:3001", {
+            auth: {
+                token
+            }
+        })
         setSocket(s)
 
         return () => {
             s.disconnect()
         }
-    }, [])
+    }, [token])
 
     useEffect(() => {
         if (socket == null || quill == null) return
@@ -154,7 +207,7 @@ export default function TextEditor() {
                     borderRadius: "6px",
                     fontSize: "1rem",
                     cursor: "pointer",
-                    fontamily: "inherit"
+                    fontFamily: "inherit"
                 }} onClick={() => openDashboard()}>Dashboard</div>
                 {isTitleEditing ? (
                     <input
@@ -200,7 +253,7 @@ export default function TextEditor() {
                     </h2>
                 )}
             </div>
-            <div ref={wrapperRef}></div>
+            <div id='container' ref={wrapperRef}></div>
         </div>
     )
 }
