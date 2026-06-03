@@ -1,7 +1,7 @@
 const express = require("express");
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const prisma = require("../prisma/client");
 
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -30,22 +30,27 @@ router.post("/google", async (req, res) => {
         // Extract user info from Google payload
         const { sub: googleId, email, name, picture } = payload;
 
-        // Find existing user by googleId
-        let user = await User.findOne({ googleId });
+        // Find existing user by googleId in PostgreSQL using Prisma
+        let user = await prisma.user.findUnique({
+            where: { googleId }
+        });
 
-        // If user does not exist, create a new one
+        // If user does not exist, create a new one in PostgreSQL
         if (!user) {
-            user = await User.create({
-                googleId,
-                email,
-                name,
-                picture,
+            user = await prisma.user.create({
+                data: {
+                    googleId,
+                    email,
+                    name,
+                    picture,
+                },
             });
         }
 
         // Generate JWT with 7d expiration
+        // Note: userId is now an Integer (PostgreSQL ID)
         const token = jwt.sign(
-            { userId: user._id, email: user.email, name: user.name },
+            { userId: user.id, email: user.email, name: user.name },
             process.env.JWT_SECRET,
             { expiresIn: "7d" }
         );
@@ -54,7 +59,7 @@ router.post("/google", async (req, res) => {
         res.json({
             token,
             user: {
-                id: user._id,
+                id: user.id,
                 email: user.email,
                 name: user.name,
                 picture: user.picture,
