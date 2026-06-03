@@ -77,7 +77,7 @@ export default function TextEditor() {
         setTitle(newTitle)
         fetch(`${process.env.REACT_APP_API_URL}/documents/${documentId}/title`, {
             method: 'PUT',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`
             },
@@ -104,7 +104,7 @@ export default function TextEditor() {
             quill.enable()
         })
         socket.emit('get-document', documentId)
-        
+
         socket.on('error', (errorMessage) => {
             console.error("Socket error:", errorMessage);
             if (errorMessage.includes("Authentication error")) {

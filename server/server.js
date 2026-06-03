@@ -1,27 +1,12 @@
 require("dotenv").config();
-const mongoose = require("mongoose")
 const express = require('express');
-const Document = require('./models/Document')
+const prisma = require("./prisma/client");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const { requireAuth } = require("./middleware/auth");
 const authRoutes = require("./routes/auth");
-
-// mongoose.connect('mongodb://localhost/google-docs-clone')
-
-async function connectDB() {
-  try {
-    await mongoose.connect('mongodb://localhost/google-docs-clone');
-    console.log('MongoDB connected successfully');
-  } catch (err) {
-    console.error('MongoDB connection error:', err);
-    process.exit(1); // Exit process if connection fails
-  }
-}
-
-connectDB();
 
 const app = express();
 app.use(cors());
@@ -33,8 +18,12 @@ app.use("/auth", authRoutes);
 // Get all documents (owned by the user)
 app.get("/documents", requireAuth, async (req, res) => {
   try {
-    const docs = await Document.find({ owner: req.user.userId });
-    res.json(docs);
+    const docs = await prisma.document.findMany({
+      where: { ownerId: req.user.userId }
+    });
+    // Map 'id' to '_id' for frontend compatibility
+    const formattedDocs = docs.map(doc => ({ ...doc, _id: doc.id }));
+    res.json(formattedDocs);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch documents" });
   }
@@ -42,13 +31,16 @@ app.get("/documents", requireAuth, async (req, res) => {
 
 app.post("/documents", requireAuth, async (req, res) => {
   try {
-    const doc = await Document.create({
-      _id: req.body.id,
-      data: req.body.data || {},
-      title: req.body.title || "Untitled Document",
-      owner: req.user.userId
+    const doc = await prisma.document.create({
+      data: {
+        id: req.body.id,
+        data: req.body.data || {},
+        title: req.body.title || "Untitled Document",
+        ownerId: req.user.userId
+      }
     });
-    res.json(doc);
+    // Map 'id' to '_id' for frontend compatibility
+    res.json({ ...doc, _id: doc.id });
   } catch (err) {
     res.status(500).json({ error: "Failed to create document" });
   }
@@ -57,10 +49,13 @@ app.post("/documents", requireAuth, async (req, res) => {
 // show document title (only if owned)
 app.get("/documents/:id", requireAuth, async (req, res) => {
   try {
-    const document = await Document.findById(req.params.id);
+    const document = await prisma.document.findUnique({
+      where: { id: req.params.id }
+    });
+
     if (!document) return res.status(404).json({ error: "Document not found" });
 
-    if (document.owner.toString() !== req.user.userId) {
+    if (document.ownerId !== req.user.userId) {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -76,17 +71,22 @@ app.put("/documents/:id/title", requireAuth, async (req, res) => {
     const { title } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
 
-    const document = await Document.findById(req.params.id);
+    const document = await prisma.document.findUnique({
+      where: { id: req.params.id }
+    });
+
     if (!document) return res.status(404).json({ error: "Document not found" });
 
-    if (document.owner.toString() !== req.user.userId) {
+    if (document.ownerId !== req.user.userId) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    document.title = title;
-    await document.save();
+    const updatedDoc = await prisma.document.update({
+      where: { id: req.params.id },
+      data: { title }
+    });
 
-    res.json({ title: document.title });
+    res.json({ title: updatedDoc.title });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -95,14 +95,20 @@ app.put("/documents/:id/title", requireAuth, async (req, res) => {
 // Delete a document (only if owned)
 app.delete("/documents/:id", requireAuth, async (req, res) => {
   try {
-    const document = await Document.findById(req.params.id);
+    const document = await prisma.document.findUnique({
+      where: { id: req.params.id }
+    });
+
     if (!document) return res.status(404).json({ error: "Document not found" });
 
-    if (document.owner.toString() !== req.user.userId) {
+    if (document.ownerId !== req.user.userId) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    await Document.findByIdAndDelete(req.params.id);
+    await prisma.document.delete({
+      where: { id: req.params.id }
+    });
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete document" });
@@ -145,27 +151,44 @@ const defaultValue = ""
 
 io.on("connection", socket => {
   socket.on('get-document', async documentId => {
-    const document = await Document.findById(documentId);
+    try {
+      const document = await prisma.document.findUnique({
+        where: { id: documentId }
+      });
 
-    // Verify ownership before joining room
-    if (!document || document.owner.toString() !== socket.user.userId) {
-      return socket.emit('error', 'Access denied: You do not own this document');
-    }
-
-    socket.join(documentId)
-    socket.emit('load-document', document.data)
-
-    socket.on('send-changes', delta => {
-      socket.broadcast.to(documentId).emit('receive-changes', delta)
-    })
-
-    socket.on('save-document', async data => {
-      // Also check ownership on save
-      const doc = await Document.findById(documentId);
-      if (doc && doc.owner.toString() === socket.user.userId) {
-        await Document.findByIdAndUpdate(documentId, { data })
+      // Verify ownership before joining room
+      if (!document || document.ownerId !== socket.user.userId) {
+        return socket.emit('error', 'Access denied: You do not own this document');
       }
-    })
+
+      socket.join(documentId)
+      socket.emit('load-document', document.data)
+
+      socket.on('send-changes', delta => {
+        socket.broadcast.to(documentId).emit('receive-changes', delta)
+      })
+
+      socket.on('save-document', async data => {
+        try {
+          // Also check ownership on save
+          const doc = await prisma.document.findUnique({
+            where: { id: documentId }
+          });
+
+          if (doc && doc.ownerId === socket.user.userId) {
+            await prisma.document.update({
+              where: { id: documentId },
+              data: { data }
+            });
+          }
+        } catch (err) {
+          console.error("Socket save-document error:", err);
+        }
+      })
+    } catch (err) {
+      console.error("Socket get-document error:", err);
+      socket.emit('error', 'Server error while loading document');
+    }
   })
 })
 
