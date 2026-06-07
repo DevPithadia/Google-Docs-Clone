@@ -72,6 +72,14 @@ client/public/*.tmp
 server/dist/
 server/logs/
 server/data/db/   # local MongoDB data if used
+server/generated/
+
+# FastAPI files
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
 
 # Graphify generated files
 graphify-out/
