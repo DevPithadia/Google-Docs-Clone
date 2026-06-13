@@ -5,9 +5,11 @@ import { useAuth } from "./context/AuthContext";
 import "./Dashboard.css";
 
 export default function Dashboard() {
-  const [documents, setDocuments] = useState([]);
+  const [myDocuments, setMyDocuments] = useState([]);
+  const [sharedDocuments, setSharedDocuments] = useState([]);
   const [searchInput, setSearchInput] = useState("");
-  const [filteredDocs, setFilteredDocs] = useState([]);
+  const [filteredMyDocs, setFilteredMyDocs] = useState([]);
+  const [filteredSharedDocs, setFilteredSharedDocs] = useState([]);
   const searchTimeout = useRef(null);
   const navigate = useNavigate();
   const { user, token, logout } = useAuth();
@@ -16,9 +18,11 @@ export default function Dashboard() {
     document.title = "Google Docs Clone";
   }, []);
 
+  // Fetch both my documents and shared documents
   useEffect(() => {
     if (!token) return;
 
+    // Fetch my documents (owned by me)
     fetch(`${process.env.REACT_APP_API_URL}/documents`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -27,13 +31,39 @@ export default function Dashboard() {
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          setDocuments(data);
+          // Filter to only owned documents and sort descending by createdAt
+          const owned = data
+            .filter(doc => doc.ownerId === user.id)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          setMyDocuments(owned);
         } else {
-          setDocuments([]);
+          setMyDocuments([]);
         }
       })
-      .catch(() => setDocuments([]));
-  }, [token]);
+      .catch(() => setMyDocuments([]));
+
+    // Fetch shared documents
+    fetch(`${process.env.REACT_APP_API_URL}/documents/shared`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          // Sort shared documents by shareCreatedAt (or fallback to updatedAt)
+          const shared = [...data].sort((a, b) => {
+            const dateA = new Date(a.shareCreatedAt || a.updatedAt);
+            const dateB = new Date(b.shareCreatedAt || b.updatedAt);
+            return dateB - dateA;
+          });
+          setSharedDocuments(shared);
+        } else {
+          setSharedDocuments([]);
+        }
+      })
+      .catch(() => setSharedDocuments([]));
+  }, [token, user.id]);
 
   // Debounced search effect
   useEffect(() => {
@@ -41,25 +71,31 @@ export default function Dashboard() {
 
     searchTimeout.current = setTimeout(() => {
       if (!searchInput.trim()) {
-        setFilteredDocs(documents);
+        setFilteredMyDocs(myDocuments);
+        setFilteredSharedDocs(sharedDocuments);
       } else {
-        setFilteredDocs(
-          documents.filter((doc) =>
-            (doc.title || "Untitled Document")
-              .toLowerCase()
-              .includes(searchInput.trim().toLowerCase())
+        const searchLower = searchInput.trim().toLowerCase();
+        setFilteredMyDocs(
+          myDocuments.filter((doc) =>
+            (doc.title || "Untitled Document").toLowerCase().includes(searchLower)
+          )
+        );
+        setFilteredSharedDocs(
+          sharedDocuments.filter((doc) =>
+            (doc.title || "Untitled Document").toLowerCase().includes(searchLower)
           )
         );
       }
-    }, 500); // 0.5 second debounce
+    }, 500);
 
     return () => clearTimeout(searchTimeout.current);
-  }, [searchInput, documents]);
+  }, [searchInput, myDocuments, sharedDocuments]);
 
-  // Show all docs by default
+  // Set filtered docs when data loads
   useEffect(() => {
-    setFilteredDocs(documents);
-  }, [documents]);
+    setFilteredMyDocs(myDocuments);
+    setFilteredSharedDocs(sharedDocuments);
+  }, [myDocuments, sharedDocuments]);
 
   function handleNewDocument() {
     const title = prompt("Enter document title:", "Untitled Document");
@@ -90,7 +126,7 @@ export default function Dashboard() {
       })
         .then((res) => res.json())
         .then(() => {
-          setDocuments((prev) => prev.filter((doc) => doc._id !== id));
+          setMyDocuments((prev) => prev.filter((doc) => doc.id !== id));
         })
         .catch(() => alert("Failed to delete document"));
     }
@@ -108,6 +144,40 @@ export default function Dashboard() {
       .join("")
       .slice(0, 40);
   }
+
+  // Reusable document card component
+      function DocumentCard({ doc, isOwner, role }) {
+        return (
+          <div key={doc.id} className="document-item">
+            <div className="document-title">
+              {doc.title || "Untitled Document"}
+            </div>
+            {!isOwner && (
+              <div className="document-owner">
+                Shared by {doc.ownerName}
+              </div>
+            )}
+            <div
+              className="document-card"
+              onClick={() => handleOpenDocument(doc.id)}
+            >
+              <div className="document-preview">{getPreview(doc.data)}</div>
+              {isOwner && (
+                <button
+                  className="delete-document-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteDocument(doc.id);
+                  }}
+                  title="Delete document"
+                >
+                  &#128465;
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      }
 
   return (
     <div className="dashboard-container">
@@ -139,36 +209,37 @@ export default function Dashboard() {
           className="dashboard-searchbar"
         />
       </div>
-      <div className="documents-grid">
-        {filteredDocs.length === 0 ? (
-          <div className="no-documents-message">
-            No Relevant Documents Found
-          </div>
-        ) : (
-          filteredDocs.map((doc) => (
-            <div key={doc.id} className="document-item">
-              <div className="document-title">
-                {doc.title || "Untitled Document"}
-              </div>
-              <div
-                className="document-card"
-                onClick={() => handleOpenDocument(doc.id)}
-              >
-                <div className="document-preview">{getPreview(doc.data)}</div>
-                <button
-                  className="delete-document-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteDocument(doc.id);
-                  }}
-                  title="Delete document"
-                >
-                  &#128465;
-                </button>
-              </div>
+
+      {/* My Documents Section */}
+      <div className="documents-section">
+        <h3 className="section-title">My Documents</h3>
+        <div className="documents-grid">
+          {filteredMyDocs.length === 0 ? (
+            <div className="no-documents-message">
+              No Documents Found
             </div>
-          ))
-        )}
+          ) : (
+            filteredMyDocs.map((doc) => (
+              <DocumentCard key={doc.id} doc={doc} isOwner={true} />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Shared With Me Section */}
+      <div className="documents-section">
+        <h3 className="section-title">Shared With Me</h3>
+        <div className="documents-grid">
+          {filteredSharedDocs.length === 0 ? (
+            <div className="no-documents-message">
+              No Shared Documents Found
+            </div>
+          ) : (
+            filteredSharedDocs.map((doc) => (
+              <DocumentCard key={doc.id} doc={doc} isOwner={false} role={doc.role} />
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

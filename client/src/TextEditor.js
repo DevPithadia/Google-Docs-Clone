@@ -3,6 +3,7 @@ import Quill from 'quill'
 import "quill/dist/quill.snow.css"
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import './TextEditor.css'
 
 const SAVE_INTERVAL_MS = 1000
 const FONT_SIZES = ['8px', '10px', '12px', '14px', '18px', '24px', '36px'];
@@ -29,18 +30,27 @@ export default function TextEditor() {
     const [socket, setSocket] = useState(null)
     const [isSocketReady, setIsSocketReady] = useState(false);
     const [quill, setQuill] = useState()
-    const [cachedDocumentData, setCachedDocumentData] = useState(null)
     const [title, setTitle] = useState("Untitled Document")
     const [isTitleEditing, setIsTitleEditing] = useState(false)
+    const [role, setRole] = useState(null)
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+    const [shareEmail, setShareEmail] = useState('')
+    const [shareRole, setShareRole] = useState('viewer')
+    const [shareError, setShareError] = useState('')
+    const [shareSuccess, setShareSuccess] = useState('')
     const titleRef = useRef(null)
     const navigate = useNavigate();
-    const { token, logout } = useAuth();
+    const { token, logout, user } = useAuth();
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
 
     useEffect(() => {
         document.title = title ? `${title} - Google Docs Clone` : "Google Docs Clone"
     }, [title])
 
-    // Fetch title on mount
+    // Fetch title and role on mount
     useEffect(() => {
         if (!token) return;
 
@@ -49,7 +59,7 @@ export default function TextEditor() {
                 Authorization: `Bearer ${token}`
             }
         })
-            .then(res => {
+            .then((res) => {
                 if (res.status === 401) {
                     logout();
                     navigate("/login");
@@ -61,11 +71,13 @@ export default function TextEditor() {
                 }
                 return res.json();
             })
-            .then(doc => {
+            .then((doc) => {
                 setTitle(doc.title || "Untitled Document")
+                setRole(doc.role)
+                // Check if owner (for share button)
             })
-            .catch(err => {
-                console.error("Failed to fetch title:", err);
+            .catch((err) => {
+                console.error("Failed to fetch document:", err);
                 if (err.message !== "Unauthorized" && err.message !== "Forbidden") {
                     setTitle("Untitled Document");
                 }
@@ -90,18 +102,6 @@ export default function TextEditor() {
             }
         })
     }
-
-    // Apply cached document data when quill is ready
-    useEffect(() => {
-        if (quill && cachedDocumentData) {
-            // Ensure data is a valid Quill Delta (has ops array)
-            const validData = cachedDocumentData && cachedDocumentData.ops
-                ? cachedDocumentData
-                : { ops: [] };
-            quill.setContents(validData);
-            quill.enable();
-        }
-    }, [quill, cachedDocumentData])
 
     // Focus the input when editing starts
     useEffect(() => {
@@ -129,9 +129,22 @@ export default function TextEditor() {
             const { event: eventType, data } = message;
 
             if (eventType === 'load-document') {
-                setCachedDocumentData(data);
-            } else if (eventType === 'receive-changes' && quill) {
-                quill.updateContents(data);
+                // Instead of checking quill here, we'll use the cached data effect
+                window.cachedDocumentData = data;
+                // If quill is already ready, apply immediately
+                if (window.quillInstance) {
+                    const validData = window.cachedDocumentData && window.cachedDocumentData.ops
+                        ? window.cachedDocumentData
+                        : { ops: [] };
+                    window.quillInstance.setContents(validData);
+                    if (role !== "viewer") {
+                        window.quillInstance.enable();
+                    } else {
+                        window.quillInstance.disable();
+                    }
+                }
+            } else if (eventType === 'receive-changes' && window.quillInstance) {
+                window.quillInstance.updateContents(data);
             } else if (eventType === 'error') {
                 console.error("Socket error:", data);
                 if (data.includes("Authentication error")) {
@@ -153,11 +166,29 @@ export default function TextEditor() {
         return () => {
             ws.close();
         };
-    }, [token, documentId, logout, navigate]); //removed - quill
+    }, [token, documentId, logout, navigate, role])
 
-    // Save document at intervals
+    // When quill is ready, apply cached data and set enabled state based on role
     useEffect(() => {
-        if (!socket || !quill || !isSocketReady) {
+        if (quill) {
+            window.quillInstance = quill;
+            if (window.cachedDocumentData) {
+                const validData = window.cachedDocumentData && window.cachedDocumentData.ops
+                    ? window.cachedDocumentData
+                    : { ops: [] };
+                quill.setContents(validData);
+            }
+            if (role === "viewer") {
+                quill.disable();
+            } else {
+                quill.enable();
+            }
+        }
+    }, [quill, role])
+
+    // Save document at intervals (only for editors/owners)
+    useEffect(() => {
+        if (!socket || !quill || !isSocketReady || role === "viewer") {
             return;
         }
 
@@ -170,36 +201,68 @@ export default function TextEditor() {
 
         return () => {
             clearInterval(interval)
-        }
-    }, [socket, quill, isSocketReady])
+        };
+    }, [socket, quill, isSocketReady, role])
 
-    // Send text changes via WebSocket
+    // Send text changes via WebSocket (only for editors/owners)
     useEffect(() => {
-        if (!socket || !quill || !isSocketReady) return;
+        if (!socket || !quill || !isSocketReady || role === "viewer") return;
 
         const handler = (delta, oldDelta, source) => {
-            if (source !== 'user') return
+            if (source !== 'user') return;
             socket.send(JSON.stringify({
                 event: "send-changes",
                 data: delta
             }))
-        }
+        };
         quill.on('text-change', handler)
 
         return () => {
             quill.off('text-change', handler)
+        };
+    }, [socket, quill, isSocketReady, role])
+
+    // Share document handler
+    const handleShare = async () => {
+        if (!token) return;
+        setShareError('');
+        setShareSuccess('');
+
+        try {
+            const res = await fetch(`${process.env.REACT_APP_API_URL}/documents/${documentId}/share`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ email: shareEmail, role: shareRole })
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.detail || 'Failed to share document');
+            }
+
+            setShareSuccess('Document shared successfully!');
+            setShareEmail('');
+            setTimeout(() => {
+                setIsShareModalOpen(false);
+                setShareSuccess('');
+            }, 1500);
+        } catch (err) {
+            setShareError(err.message || 'Failed to share document');
         }
-    }, [socket, quill, isSocketReady])
+    };
 
     const wrapperRef = useCallback((wrapper) => {
-        if (wrapper == null) return
+        if (wrapper == null) return;
 
-        wrapper.innerHTML = ''
+        wrapper.innerHTML = '';
         const editor = document.createElement('div');
-        wrapper.append(editor)
-        const q = new Quill(editor, { theme: "snow", modules: { toolbar: TOOLBAR_OPTIONS } })
-        q.disable()
-        q.setText('Loading...')
+        wrapper.append(editor);
+        const q = new Quill(editor, { theme: "snow", modules: { toolbar: TOOLBAR_OPTIONS } });
+        q.disable();
+        q.setText('Loading...');
         setQuill(q);
     }, [])
 
@@ -208,70 +271,160 @@ export default function TextEditor() {
     }
 
     return (
-        <div className='container'>
-            <div className='document-title-wrapper' style={{
+        <div className="container">
+            <div className="document-title-wrapper" style={{
                 display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 position: "sticky",
                 height: "55px",
                 top: "0",
                 zIndex: "1",
                 backgroundColor: "#F3F3F3"
             }}>
-                <div className='dashboard-button' style={{
-                    margin: "10px", padding: "0.5rem 1.2rem",
-                    background: "#4285f4",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "6px",
-                    fontSize: "1rem",
-                    cursor: "pointer",
-                    fontFamily: "inherit"
-                }} onClick={() => openDashboard()}>Dashboard</div>
-                {isTitleEditing ? (
-                    <input
-                        ref={titleRef}
-                        className='document-title-input'
-                        value={title}
-                        onChange={e => setTitle(e.target.value)}
-                        onBlur={() => { setIsTitleEditing(false); saveTitle(title); }}
-                        onKeyDown={e => {
-                            if (e.key === "Enter") {
-                                setIsTitleEditing(false);
-                                saveTitle(title);
-                            }
-                        }}
-                        style={{
-                            fontSize: "1.5rem",
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div className="dashboard-button" style={{
+                        margin: "10px", padding: "0.5rem 1.2rem",
+                        background: "#4285f4",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "1rem",
+                        cursor: "pointer",
+                        fontFamily: "inherit"
+                    }} onClick={() => openDashboard()}>Dashboard</div>
+                    {/* Only allow owner/editor to edit title */}
+                    {role !== "viewer" && isTitleEditing ? (
+                        <input
+                            ref={titleRef}
+                            className="document-title-input"
+                            value={title}
+                            onChange={e => setTitle(e.target.value)}
+                            onBlur={() => { setIsTitleEditing(false); saveTitle(title); }}
+                            onKeyDown={e => {
+                                if (e.key === "Enter") {
+                                    setIsTitleEditing(false);
+                                    saveTitle(title);
+                                }
+                            }}
+                            style={{
+                                fontSize: "1.5rem",
+                                fontWeight: "bold",
+                                width: "100%",
+                                maxWidth: "600px",
+                                border: "none",
+                                background: "transparent",
+                                outline: "none",
+                                margin: "10px",
+                                padding: "5px"
+                            }}
+                        />
+                    ) : (
+                        <h2
+                            className="document-title"
+                            style={{
+                                fontSize: "1.5rem",
+                                fontWeight: "bold",
+                                cursor: role !== "viewer" ? "pointer" : "default",
+                                width: "100%",
+                                maxWidth: "600px",
+                                margin: "10px",
+                                padding: "5px"
+                            }}
+                            onClick={() => role !== "viewer" && setIsTitleEditing(true)}
+                            title={role !== "viewer" ? "Click to edit title" : ""}
+                        >
+                            {title}
+                        </h2>
+                    )}
+                    {role === "viewer" && (
+                        <span style={{
+                            background: "#e0e0e0",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            fontSize: "0.8rem",
+                            marginLeft: "10px",
+                            color: "#555",
                             fontWeight: "bold",
-                            width: "100%",
-                            maxWidth: "600px",
+                            whiteSpace: "nowrap"
+                        }}>
+                            View Only
+                        </span>
+                    )}
+                </div>
+                {/* Only show share button to owner */}
+                {role === "owner" && (
+                    <button
+                        className="share-button"
+                        style={{
+                            margin: "10px",
+                            padding: "0.5rem 1.2rem",
+                            background: "#4285f4",
+                            color: "#fff",
                             border: "none",
-                            background: "transparent",
-                            outline: "none",
-                            margin: "10px",
-                            padding: "5px"
-                        }}
-                    />
-                ) : (
-                    <h2
-                        className='document-title'
-                        style={{
-                            fontSize: "1.5rem",
-                            fontWeight: "bold",
+                            borderRadius: "6px",
+                            fontSize: "1rem",
                             cursor: "pointer",
-                            width: "100%",
-                            maxWidth: "600px",
-                            margin: "10px",
-                            padding: "5px"
+                            fontFamily: "inherit"
                         }}
-                        onClick={() => setIsTitleEditing(true)}
-                        title="Click to edit title"
+                        onClick={() => setIsShareModalOpen(true)}
                     >
-                        {title}
-                    </h2>
+                        Share
+                    </button>
                 )}
             </div>
-            <div id='container' ref={wrapperRef}></div>
+            <div id="container" ref={wrapperRef}></div>
+
+            {/* Share Modal */}
+            {isShareModalOpen && (
+                <div className="share-modal-overlay">
+                    <div className="share-modal">
+                        <h2 className="share-modal-title">Share Document</h2>
+                        {shareError && <div className="share-error">{shareError}</div>}
+                        {shareSuccess && <div className="share-success">{shareSuccess}</div>}
+                        <div className="share-form-group">
+                            <label className="share-label">User Email</label>
+                            <input
+                                type="email"
+                                className="share-input"
+                                value={shareEmail}
+                                onChange={(e) => setShareEmail(e.target.value)}
+                                placeholder="Enter user email"
+                            />
+                        </div>
+                        <div className="share-form-group">
+                            <label className="share-label">Role</label>
+                            <select
+                                className="share-select"
+                                value={shareRole}
+                                onChange={(e) => setShareRole(e.target.value)}
+                            >
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                            </select>
+                        </div>
+                        <div className="share-modal-buttons">
+                            <button
+                                className="share-button-cancel"
+                                onClick={() => {
+                                    setIsShareModalOpen(false);
+                                    setShareError('');
+                                    setShareSuccess('');
+                                    setShareEmail('');
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="share-button-confirm"
+                                onClick={handleShare}
+                            >
+                                Share
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

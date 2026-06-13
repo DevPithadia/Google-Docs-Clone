@@ -22,6 +22,11 @@ class Document(DocumentBase):
     ownerId: int
     createdAt: datetime
     updatedAt: datetime
+    ownerName: Optional[str] = None
+    ownerEmail: Optional[str] = None
+    ownerPicture: Optional[str] = None
+    role: Optional[str] = None
+    shareCreatedAt: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

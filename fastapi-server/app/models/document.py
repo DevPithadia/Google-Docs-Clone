@@ -1,11 +1,12 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from sqlalchemy import String, DateTime, JSON, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
+    from app.models.document_permission import DocumentPermission
 
 class Document(Base):
     __tablename__ = "Document"  # Matches Prisma/PostgreSQL exactly
@@ -19,6 +20,9 @@ class Document(Base):
     
     # Relationships
     owner: Mapped["User"] = relationship("User", back_populates="documents")
+    permissions: Mapped[List["DocumentPermission"]] = relationship(
+        "DocumentPermission", back_populates="document", cascade="all, delete-orphan"
+    )
     
     # Timestamps
     createdAt: Mapped[datetime] = mapped_column(

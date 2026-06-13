@@ -75,7 +75,6 @@
 
 .dashboard-searchbar:focus {
   background-color: #ffffff;
-  /* box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.18); */
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.359);
   outline: none;
 }
@@ -100,6 +99,17 @@
   font-family: inherit;
 }
 
+.documents-section {
+  margin-bottom: 3rem;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  color: #202124;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
 .documents-grid {
   display: flex;
   flex-wrap: wrap;
@@ -117,10 +127,20 @@
 
 .document-title {
   font-size: 0.9rem;
-  /* font-weight: 700; */
-  color: #333;
+  color: #202124;
   margin-top: 10px;
   margin-left: 0.1rem;
+  text-align: left;
+  font-family: inherit;
+  padding-left: 10px;
+  font-weight: 500;
+}
+
+.document-owner {
+  font-size: 0.75rem;
+  color: #5f6368;
+  margin-left: 0.1rem;
+  margin-bottom: 4px;
   text-align: left;
   font-family: inherit;
   padding-left: 10px;
@@ -128,7 +148,6 @@
 
 .document-card {
   position: relative;
-  /* background: #f8f9fa; */
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 2px;
@@ -138,7 +157,7 @@
   align-items: flex-start;
   justify-content: flex-start;
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s;
   margin-bottom: 0.3rem;
   padding: 8px;
   box-sizing: border-box;
@@ -146,8 +165,7 @@
 }
 
 .document-card:hover {
-  /* box-shadow: 0 4px 16px rgba(66, 133, 244, 0.18); */
-  border-color:#4285f4;
+  border-color: #4285f4;
 }
 
 .document-preview {
@@ -176,10 +194,9 @@
   cursor: pointer;
   z-index: 2;
   padding: 4px 12px;
-  /* border-radius: 4px; */
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s, background 0.2s, box-shadow 0.2s;
+  transition: opacity 0.2s, background 0.2s;
 }
 
 .document-card:hover .delete-document-btn {
