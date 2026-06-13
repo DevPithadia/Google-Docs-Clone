@@ -6,6 +6,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.document import Document
+    from app.models.document_permission import DocumentPermission
 
 class User(Base):
     __tablename__ = "User"  # Matches Prisma/PostgreSQL exactly
@@ -19,6 +20,9 @@ class User(Base):
     # Relationships
     documents: Mapped[List["Document"]] = relationship(
         "Document", back_populates="owner", cascade="all, delete-orphan"
+    )
+    permissions: Mapped[List["DocumentPermission"]] = relationship(
+        "DocumentPermission", back_populates="user", cascade="all, delete-orphan"
     )
     
     # Timestamps

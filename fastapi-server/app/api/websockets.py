@@ -6,6 +6,7 @@ import json
 
 from app.db.session import SessionLocal
 from app.models.document import Document
+from app.models.document_permission import DocumentPermission
 from app.core.config import settings
 from app.websockets.manager import manager
 
@@ -37,17 +38,36 @@ async def websocket_endpoint(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # 2. Ownership Verification
+    # 2. Access Verification
     db = SessionLocal()
+    is_editor = False
     try:
         document = db.query(Document).filter(Document.id == document_id).first()
-        if not document or document.ownerId != user_id:
+        if not document:
             await websocket.accept()
-            await websocket.send_json({"event": "error", "data": "Access denied: You do not own this document"})
+            await websocket.send_json({"event": "error", "data": "Document not found"})
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-
-        # 3. Connection Established
+        
+        # Get user role
+        user_role = None
+        if document.ownerId == user_id:
+            user_role = "owner"
+            is_editor = True
+        else:
+            permission = db.query(DocumentPermission).filter(
+                DocumentPermission.documentId == document_id,
+                DocumentPermission.userId == user_id
+            ).first()
+            if not permission:
+                await websocket.accept()
+                await websocket.send_json({"event": "error", "data": "Access denied: You do not have access to this document"})
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+            user_role = permission.role
+            is_editor = (permission.role == "editor")
+        
+        # We have access, proceed
         await manager.connect(websocket, document_id)
         
         try:
@@ -67,21 +87,19 @@ async def websocket_endpoint(
                     })
 
                 elif event == "send-changes":
-                    # Broadcast Quill deltas to other collaborators
-                    await manager.broadcast(
-                        {"event": "receive-changes", "data": payload_data},
-                        document_id,
-                        exclude_websocket=websocket
-                    )
+                    # Only allow editors/owners to send changes
+                    if is_editor:
+                        await manager.broadcast(
+                            {"event": "receive-changes", "data": payload_data},
+                            document_id,
+                            exclude_websocket=websocket
+                        )
 
                 elif event == "save-document":
-                    # Persist changes to PostgreSQL
-                    # Use a fresh query to ensure we have the latest object and session state
-                    # and use direct update for JSON fields to ensure change detection
-                    if payload_data is not None:
+                    # Only allow editors/owners to save
+                    if is_editor and payload_data is not None:
                         db.query(Document).filter(
-                            Document.id == document_id,
-                            Document.ownerId == user_id
+                            Document.id == document_id
                         ).update({Document.data: payload_data, Document.updatedAt: func.now()})
                         db.commit()
 
