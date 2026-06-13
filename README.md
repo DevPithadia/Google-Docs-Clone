@@ -1,6 +1,6 @@
 # Google Docs Clone
 
-A real-time collaborative document editor inspired by Google Docs, built with React, Node.js, MongoDB, Socket.io, and Quill.js. Users can create, edit, and manage documents with live synchronization across multiple clients.
+A real-time collaborative document editor inspired by Google Docs. Users can create, edit, share, and collaborate on documents in real time with role-based permissions and live synchronization across multiple clients.
 
 ## Features
 
@@ -9,11 +9,10 @@ A real-time collaborative document editor inspired by Google Docs, built with Re
 * Google OAuth Login
 * JWT Authentication
 * Protected Routes
-* Document Ownership
-* Protected REST APIs
-* Protected Socket.io Connections
+* Protected APIs
+* Protected WebSocket Connections
 
-### Documents
+### Document Management
 
 * Create Documents
 * Edit Documents
@@ -22,12 +21,23 @@ A real-time collaborative document editor inspired by Google Docs, built with Re
 * Search Documents
 * Auto Save
 
+### Sharing & Permissions
+
+* Share Documents with Other Users
+* Owner / Editor / Viewer Roles
+* Shared With Me Dashboard
+* Role-Based Access Control
+* View-Only Mode
+
 ### Real-Time Collaboration
 
-* Live Document Synchronization
-* Socket.io Based Communication
-* Automatic Content Updates
-* Multi-Client Editing Support
+* Live Multi-User Editing
+* Native WebSocket Communication
+* Real-Time Content Synchronization
+* Automatic Document Updates
+* Multi-Client Collaboration
+
+---
 
 ## Tech Stack
 
@@ -36,26 +46,44 @@ A real-time collaborative document editor inspired by Google Docs, built with Re
 * React
 * React Router
 * Quill.js
-* Socket.io Client
+* Native WebSockets
 * Google OAuth
 
 ### Backend
 
-* Node.js
-* Express.js
-* Socket.io
+* FastAPI
+* SQLAlchemy
+* PostgreSQL
 * JWT Authentication
-* Google Auth Library
+* Google OAuth Verification
+* Native WebSockets
 
 ### Database
 
-* MongoDB
-* Mongoose
+* PostgreSQL
+
+---
+
+## Architecture
+
+```text
+React Client
+      │
+      ▼
+FastAPI Backend
+      │
+ ┌────┴────┐
+ ▼         ▼
+PostgreSQL WebSockets
+```
+
+---
 
 ## Project Structure
 
 ```text
 google-docs-clone/
+│
 ├── client/
 │   ├── src/
 │   │   ├── components/
@@ -65,150 +93,202 @@ google-docs-clone/
 │   │   └── TextEditor.js
 │   └── package.json
 │
-├── server/
-│   ├── middleware/
-│   ├── models/
-│   ├── routes/
-│   ├── server.js
-│   └── package.json
+├── fastapi-server/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   └── websockets/
+│   │
+│   ├── requirements.txt
+│   └── .env
 │
 └── README.md
 ```
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
 * Node.js 18+
-* MongoDB
+* Python 3.11+
+* PostgreSQL
 * Google OAuth Client ID
 
-### Installation
+---
 
-#### Clone Repository
+## Installation
+
+### Clone Repository
 
 ```bash
 git clone https://github.com/DevPithadia/Google-Docs-Clone.git
 cd Google-Docs-Clone
 ```
 
-#### Install Dependencies
-
-Frontend:
+### Frontend
 
 ```bash
 cd client
 npm install
 ```
 
-Backend:
+### Backend
 
 ```bash
-cd server
-npm install
+cd fastapi-server
+pip install -r requirements.txt
 ```
 
-### Environment Variables
+---
 
-#### Server (.env)
+## Environment Variables
+
+### Backend (.env)
 
 ```env
-PORT=3001
-MONGODB_URI=mongodb://localhost/google-docs-clone
-GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
-JWT_SECRET=YOUR_JWT_SECRET
+DATABASE_URL=postgresql://postgres:password@localhost:5432/google_docs_clone
+
+JWT_SECRET=your_jwt_secret
+
+GOOGLE_CLIENT_ID=your_google_client_id
 ```
 
-#### Client (.env)
+### Frontend (.env)
 
 ```env
-REACT_APP_GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
-REACT_APP_API_URL=http://localhost:3001
+REACT_APP_API_URL=http://localhost:8000
+
+REACT_APP_WS_URL=ws://localhost:8000
+
+REACT_APP_GOOGLE_CLIENT_ID=your_google_client_id
 ```
 
-### Run Application
+---
 
-Backend:
+## Run Application
+
+### Backend
 
 ```bash
-cd server
-nodemon server.js
+cd fastapi-server
+py -m uvicorn app.main:app --reload
 ```
 
-Frontend:
+### Frontend
 
 ```bash
 cd client
 npm start
 ```
 
-### Access Application
+---
+
+## Access Application
 
 ```text
 Frontend: http://localhost:3000
-Backend:  http://localhost:3001
+Backend:  http://localhost:8000
 ```
+
+---
 
 ## Authentication Flow
 
 ```text
 User
-  ↓
+  │
+  ▼
 Google OAuth Login
-  ↓
+  │
+  ▼
 Google ID Token
-  ↓
-Backend Verification
-  ↓
+  │
+  ▼
+FastAPI Verification
+  │
+  ▼
 JWT Generation
-  ↓
+  │
+  ▼
 Protected Session
-  ↓
+  │
+  ▼
 Document Access
 ```
 
-## Current Roadmap
+---
 
-### Completed
+## Collaboration Flow
 
-* Real-time collaborative editor
-* Document CRUD operations
-* Auto-save functionality
-* Search functionality
-* Google OAuth authentication
-* JWT authentication
-* Protected routes
-* Document ownership
-* Socket authentication
+```text
+Owner
+  │
+  ▼
+Share Document
+  │
+  ▼
+Assign Role
+(Editor / Viewer)
+  │
+  ▼
+Shared User Opens Document
+  │
+  ▼
+WebSocket Connection
+  │
+  ▼
+Real-Time Collaboration
+```
 
-### Planned
-
-* PostgreSQL Migration
-* FastAPI Backend Migration
-* Docker Containerization
-* Vercel Deployment
-* Render Deployment
-* GitHub Actions CI/CD
-* AI Features
+---
 
 ## Screenshots
-
-Add screenshots here:
 
 ### Login Page
 
 <img width="1031" height="771" alt="image" src="https://github.com/user-attachments/assets/8ed6e782-d97c-48e9-af0c-bb4c0fc223b1" />
 
-
 ### Dashboard
 
 <img width="1397" height="720" alt="image" src="https://github.com/user-attachments/assets/4687aa38-7929-4736-829c-96a62e559eee" />
-
 
 ### Editor
 
 <img width="1876" height="910" alt="image" src="https://github.com/user-attachments/assets/1bd12cf5-cc0a-4c33-88c2-6a760c88576f" />
 
+---
+
+## Roadmap
+
+### Completed
+
+* Google OAuth Authentication
+* JWT Authentication
+* PostgreSQL Migration
+* FastAPI Migration
+* Document CRUD Operations
+* Auto Save
+* Real-Time Collaboration
+* Document Sharing
+* Owner / Editor / Viewer Permissions
+* Shared With Me Dashboard
+* Native WebSocket Synchronization
+
+### Planned
+
+* Manage Access Modal
+* Active Collaborators Indicator
+* Docker Containerization
+* GitHub Actions CI/CD
+* Cloud Deployment
+* AI Features
+
+---
 
 ## Author
 
