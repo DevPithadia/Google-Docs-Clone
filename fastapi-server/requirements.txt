@@ -12,3 +12,4 @@ httpx
 psycopg2-binary
 websockets
 python-dotenv
+google-auth
