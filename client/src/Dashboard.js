@@ -66,7 +66,7 @@ export default function Dashboard() {
     if (title === null) return;
 
     const newId = uuidV4();
-    fetch(`${process.env.REACT_APP_API_URL}/documents`, {
+    fetch(`${process.env.REACT_APP_API_URL}/documents/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -146,20 +146,20 @@ export default function Dashboard() {
           </div>
         ) : (
           filteredDocs.map((doc) => (
-            <div key={doc._id} className="document-item">
+            <div key={doc.id} className="document-item">
               <div className="document-title">
                 {doc.title || "Untitled Document"}
               </div>
               <div
                 className="document-card"
-                onClick={() => handleOpenDocument(doc._id)}
+                onClick={() => handleOpenDocument(doc.id)}
               >
                 <div className="document-preview">{getPreview(doc.data)}</div>
                 <button
                   className="delete-document-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDeleteDocument(doc._id);
+                    handleDeleteDocument(doc.id);
                   }}
                   title="Delete document"
                 >

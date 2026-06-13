@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Quill from 'quill'
 import "quill/dist/quill.snow.css"
-import { io } from 'socket.io-client'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 
@@ -27,8 +26,10 @@ Quill.register(Size, true);
 
 export default function TextEditor() {
     const { id: documentId } = useParams()
-    const [socket, setSocket] = useState()
+    const [socket, setSocket] = useState(null)
+    const [isSocketReady, setIsSocketReady] = useState(false);
     const [quill, setQuill] = useState()
+    const [cachedDocumentData, setCachedDocumentData] = useState(null)
     const [title, setTitle] = useState("Untitled Document")
     const [isTitleEditing, setIsTitleEditing] = useState(false)
     const titleRef = useRef(null)
@@ -90,6 +91,18 @@ export default function TextEditor() {
         })
     }
 
+    // Apply cached document data when quill is ready
+    useEffect(() => {
+        if (quill && cachedDocumentData) {
+            // Ensure data is a valid Quill Delta (has ops array)
+            const validData = cachedDocumentData && cachedDocumentData.ops
+                ? cachedDocumentData
+                : { ops: [] };
+            quill.setContents(validData);
+            quill.enable();
+        }
+    }, [quill, cachedDocumentData])
+
     // Focus the input when editing starts
     useEffect(() => {
         if (isTitleEditing && titleRef.current) {
@@ -97,81 +110,86 @@ export default function TextEditor() {
         }
     }, [isTitleEditing])
 
-    useEffect(() => {
-        if (socket == null || quill == null) return
-        socket.once('load-document', document => {
-            quill.setContents(document)
-            quill.enable()
-        })
-        socket.emit('get-document', documentId)
-
-        socket.on('error', (errorMessage) => {
-            console.error("Socket error:", errorMessage);
-            if (errorMessage.includes("Authentication error")) {
-                logout();
-                navigate("/login");
-            } else if (errorMessage.includes("Access denied")) {
-                navigate("/");
-            }
-        })
-
-        return () => {
-            socket.off('load-document')
-            socket.off('error')
-        }
-    }, [socket, quill, documentId, logout, navigate])
-
+    // Native WebSocket connection setup
     useEffect(() => {
         if (!token) return;
 
-        const s = io(process.env.REACT_APP_SOCKET_URL || "http://localhost:3001", {
-            auth: {
-                token
+        const wsUrl = `${process.env.REACT_APP_WS_URL || "ws://localhost:8000"}/ws/${documentId}?token=${token}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log("WebSocket connected");
+            setIsSocketReady(true);
+            // Request document loading
+            ws.send(JSON.stringify({ event: 'get-document' }));
+        };
+
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            const { event: eventType, data } = message;
+
+            if (eventType === 'load-document') {
+                setCachedDocumentData(data);
+            } else if (eventType === 'receive-changes' && quill) {
+                quill.updateContents(data);
+            } else if (eventType === 'error') {
+                console.error("Socket error:", data);
+                if (data.includes("Authentication error")) {
+                    logout();
+                    navigate("/login");
+                } else if (data.includes("Access denied")) {
+                    navigate("/");
+                }
             }
-        })
-        setSocket(s)
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket disconnected");
+            setIsSocketReady(false);
+        };
+
+        setSocket(ws);
 
         return () => {
-            s.disconnect()
-        }
-    }, [token])
+            ws.close();
+        };
+    }, [token, documentId, logout, navigate]); //removed - quill
 
+    // Save document at intervals
     useEffect(() => {
-        if (socket == null || quill == null) return
+        if (!socket || !quill || !isSocketReady) {
+            return;
+        }
 
         const interval = setInterval(() => {
-            socket.emit('save-document', quill.getContents())
+            socket.send(JSON.stringify({
+                event: 'save-document',
+                data: quill.getContents()
+            }))
         }, SAVE_INTERVAL_MS)
 
         return () => {
             clearInterval(interval)
         }
-    }, [socket, quill])
+    }, [socket, quill, isSocketReady])
 
+    // Send text changes via WebSocket
     useEffect(() => {
-        if (socket == null || quill == null) return
-        const handler = (delta) => {
-            quill.updateContents(delta)
-        }
-        socket.on('receive-changes', handler)
+        if (!socket || !quill || !isSocketReady) return;
 
-        return () => {
-            socket.off('receive-changes', handler)
-        }
-    }, [socket, quill])
-
-    useEffect(() => {
-        if (socket == null || quill == null) return
         const handler = (delta, oldDelta, source) => {
             if (source !== 'user') return
-            socket.emit("send-changes", delta)
+            socket.send(JSON.stringify({
+                event: "send-changes",
+                data: delta
+            }))
         }
         quill.on('text-change', handler)
 
         return () => {
             quill.off('text-change', handler)
         }
-    }, [socket, quill])
+    }, [socket, quill, isSocketReady])
 
     const wrapperRef = useCallback((wrapper) => {
         if (wrapper == null) return
