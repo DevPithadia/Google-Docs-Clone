@@ -9,6 +9,13 @@ app = FastAPI(
     title=settings.PROJECT_NAME
 )
 
+# Initialize database tables
+from app.db.session import engine
+from app.db.base import Base
+from app import models  # Use 'from app import models' so 'app' isn't shadowed
+
+Base.metadata.create_all(bind=engine)
+
 # Set all CORS enabled origins
 # if settings.BACKEND_CORS_ORIGINS:
 #     app.add_middleware(

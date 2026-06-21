@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Dev@0506
+      POSTGRES_DB: google_docs_clone
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./fastapi-server
+    env_file:
+      - ./fastapi-server/.env
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:Dev%400506@postgres:5432/google_docs_clone
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./client
+      args:
+        - REACT_APP_GOOGLE_CLIENT_ID=872553170869-h4f9m6ghbehedguo1719fqbks9usuvfu.apps.googleusercontent.com
+        - REACT_APP_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
