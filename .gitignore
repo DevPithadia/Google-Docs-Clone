@@ -69,6 +69,7 @@ client/public/*.tmp
 # ───────────────
 # Server-specific
 # ───────────────
+server/
 server/dist/
 server/logs/
 server/data/db/   # local MongoDB data if used
